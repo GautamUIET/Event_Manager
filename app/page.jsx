@@ -18,6 +18,8 @@ export default function Page() {
   const [category, setCategory] = useState("All");
   const [events, setEvents] = useState(INITIAL_EVENTS);
 
+  console.log("User in Home Page:", user);
+
   // Redirect organizer to organizer page
   useEffect(() => {
     if (user?.role === "organizer") {

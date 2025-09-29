@@ -2,13 +2,17 @@
 
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
+import { useRouter } from "next/navigation";
 import { NAV_LINKS } from "../constants";
 
 const Navbar = () => {
   const user = useSelector((state) => state.auth.user);
   const [mounted, setMounted] = useState(false);
+  const router = useRouter();
 
-  // Ensure client-only rendering to avoid hydration mismatch
+  const userId = user?.user?._id;
+  console.log("Navbar User:", userId);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -40,7 +44,12 @@ const Navbar = () => {
 
         <div className="flex gap-4">
           {user ? (
-            <span className="text-gray-700 font-medium">Hello, {user.name}</span>
+            <button
+              onClick={() => router.push(`/student-dashboard/${userId}`)}
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors"
+            >
+              Hello, {user?.user?.name}
+            </button>
           ) : (
             <>
               <a
