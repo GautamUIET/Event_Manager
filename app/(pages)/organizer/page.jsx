@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSelector } from "react-redux";
 
 export default function OrganizerPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("create");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const [eventForm, setEventForm] = useState({
     title: "",
@@ -21,7 +24,9 @@ export default function OrganizerPage() {
     requirements: [],
     contactEmail: "",
     contactPhone: "",
-    image: ""
+    image: "",
+    organizer: "",
+    organizerId: ""
   });
 
   const [currentRequirement, setCurrentRequirement] = useState("");
@@ -40,9 +45,69 @@ export default function OrganizerPage() {
     "Networking"
   ];
 
+  const user = useSelector((state) => state.auth.user);
+
+  // Fetch events when component mounts or when activeTab changes to "manage"
+  useEffect(() => {
+    if (activeTab === "manage" && user?.user?._id) {
+      fetchOrganizerEvents();
+    }
+  }, [activeTab, user]);
+
+  const getCurrentUser = () => {
+    return {
+      id: user?.user?._id || "user123",
+      name: user?.user?.name || "John Doe"
+    };
+  };
+
+  // Fetch all events for the current organizer
+  const fetchOrganizerEvents = async () => {
+    if (!user?.user?._id) {
+      setError("User not found. Please log in.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+    
+    try {
+      const currentUser = getCurrentUser();
+      const response = await fetch(`backend/api/eventget/${currentUser.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`API returned HTML instead of JSON. Check if the endpoint exists.`);
+      }
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch events');
+      }
+
+      // Set the events from API response
+      setOrganizerEvents(result.data?.events || []);
+
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setEventForm(prev => ({ ...prev, [name]: value }));
+    setError("");
   };
 
   const addRequirement = () => {
@@ -66,57 +131,74 @@ export default function OrganizerPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError("");
 
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const currentUser = getCurrentUser();
+      
+      const eventData = {
+        ...eventForm,
+        organizer: currentUser.name,
+        organizerId: currentUser.id,
+        capacity: parseInt(eventForm.capacity),
+        price: eventForm.price === "0" ? "Free" : `₹${eventForm.price}`,
+        status: "published"
+      };
 
-    const newEvent = {
-      ...eventForm,
-      id: Date.now().toString(),
-      attendees: 0,
-      status: "published",
-      createdAt: new Date().toISOString()
-    };
+      const response = await fetch('backend/api/eventApi', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(eventData),
+      });
 
-    setOrganizerEvents(prev => [newEvent, ...prev]);
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        throw new Error(`API returned HTML instead of JSON. Check if the endpoint exists.`);
+      }
 
-    setEventForm({
-      title: "",
-      description: "",
-      date: "",
-      time: "",
-      endTime: "",
-      location: "",
-      category: "",
-      capacity: "",
-      price: "0",
-      requirements: [],
-      contactEmail: "",
-      contactPhone: "",
-      image: ""
-    });
+      const result = await response.json();
 
-    setIsSubmitting(false);
-    setActiveTab("manage");
-  };
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to create event');
+      }
 
-  const handleDeleteEvent = (id) => {
-    setOrganizerEvents(prev => prev.filter(e => e.id !== id));
-  };
+      // Refresh the events list after creating a new event
+      await fetchOrganizerEvents();
 
-  const handleStatusChange = (id, status) => {
-    setOrganizerEvents(prev =>
-      prev.map(e => e.id === id ? { ...e, status } : e)
-    );
-  };
+      // Reset form
+      setEventForm({
+        title: "",
+        description: "",
+        date: "",
+        time: "",
+        endTime: "",
+        location: "",
+        category: "",
+        capacity: "",
+        price: "0",
+        requirements: [],
+        contactEmail: "",
+        contactPhone: "",
+        image: "",
+        organizer: "",
+        organizerId: ""
+      });
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "published": return "bg-green-100 text-green-800";
-      case "draft": return "bg-yellow-100 text-yellow-800";
-      case "cancelled": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
+      setIsSubmitting(false);
+      setActiveTab("manage");
+
+    } catch (error) {
+      console.error('Error creating event:', error);
+      setError(error.message);
+      setIsSubmitting(false);
     }
   };
+
+
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-indigo-50/30 text-gray-900">
@@ -132,6 +214,13 @@ export default function OrganizerPage() {
 
       {/* Tabs */}
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+            {error}
+          </div>
+        )}
+
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             <button
@@ -361,9 +450,16 @@ export default function OrganizerPage() {
           ) : (
             <div className="max-w-7xl mx-auto">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Events</h2>
-              {organizerEvents.length === 0 ? (
+              
+              {isLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                  <p className="mt-4 text-gray-600">Loading events...</p>
+                </div>
+              ) : organizerEvents.length === 0 ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No events created yet</h3>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No events found</h3>
+                  <p className="text-gray-600 mb-4">Create your first event to get started</p>
                   <button
                     onClick={() => setActiveTab("create")}
                     className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
@@ -374,33 +470,14 @@ export default function OrganizerPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {organizerEvents.map(event => (
-                    <div key={event.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(event.status)}`}>
-                          {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                        </span>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleStatusChange(event.id, event.status === "published" ? "cancelled" : "published")}
-                            className={`text-xs px-2 py-1 rounded ${event.status === "published" ? "bg-red-100 text-red-700 hover:bg-red-200" : "bg-green-100 text-green-700 hover:bg-green-200"}`}
-                          >
-                            {event.status === "published" ? "Cancel" : "Publish"}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteEvent(event.id)}
-                            className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
+                    <div key={event._id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden p-6">
                       <h3 className="font-bold text-gray-900 mb-2 line-clamp-2">{event.title}</h3>
                       <p className="text-sm text-gray-600 mb-4 line-clamp-2">{event.description}</p>
                       <div className="space-y-2 text-sm text-gray-600">
                         <div className="flex justify-between"><span>Date:</span><span className="font-medium">{event.date}</span></div>
                         <div className="flex justify-between"><span>Time:</span><span className="font-medium">{event.time} - {event.endTime}</span></div>
-                        <div className="flex justify-between"><span>Attendees:</span><span className="font-medium">{event.attendees}/{event.capacity}</span></div>
-                        <div className="flex justify-between"><span>Price:</span><span className="font-medium">{event.price === "0" ? "Free" : `₹${event.price}`}</span></div>
+                        <div className="flex justify-between"><span>Attendees:</span><span className="font-medium">{event.attendees || 0}/{event.capacity}</span></div>
+                        <div className="flex justify-between"><span>Price:</span><span className="font-medium">{event.price === "0" || event.price === "Free" ? "Free" : event.price}</span></div>
                       </div>
                     </div>
                   ))}

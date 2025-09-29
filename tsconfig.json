@@ -28,7 +28,7 @@
     ".next/types/**/*.ts",
     "**/*.ts",
     "**/*.tsx"
-  ],
+, "app/backend/api/eventget/[id]/route.js"  ],
   "exclude": [
     "node_modules"
   ]
