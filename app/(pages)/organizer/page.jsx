@@ -60,6 +60,7 @@ export default function OrganizerPage() {
       name: user?.user?.name || "John Doe"
     };
   };
+  console.log("Current User:", getCurrentUser().id, getCurrentUser().name);
 
   // Fetch all events for the current organizer
   const fetchOrganizerEvents = async () => {
@@ -73,7 +74,7 @@ export default function OrganizerPage() {
     
     try {
       const currentUser = getCurrentUser();
-      const response = await fetch(`backend/api/eventget/${currentUser.id}`, {
+      const response = await fetch(`/backend/api/eventget/${currentUser.id}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

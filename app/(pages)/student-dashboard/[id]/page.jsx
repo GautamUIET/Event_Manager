@@ -1,69 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
 
 export default function UserProfilePage() {
   const router = useRouter();
   const user = useSelector((state) => state.auth.user);
-  // Mock user data
   const [userProfile, setUserProfile] = useState({
-    name: user?.user?.name,
-    email: user?.user?.email,
+    name: "",
+    email: "",
   });
 
-  // Mock registered events data
-  const [registeredEvents, setRegisteredEvents] = useState([
-    {
-      id: "1",
-      title: "Annual Tech Symposium 2024",
-      date: "2024-12-15",
-      time: "9:00 AM - 5:00 PM",
-      location: "University Main Auditorium",
-      category: "Technology",
-      organizer: "Tech Students Association",
-      registrationDate: "2024-11-20",
-      status: "registered",
-      price: "Free"
-    },
-    {
-      id: "2",
-      title: "Web Development Workshop",
-      date: "2024-12-18",
-      time: "2:00 PM - 6:00 PM",
-      location: "Computer Lab Building",
-      category: "Workshop",
-      organizer: "Coding Club",
-      registrationDate: "2024-11-22",
-      status: "registered",
-      price: "₹500"
-    },
-    {
-      id: "3",
-      title: "Sports Festival 2024",
-      date: "2024-11-30",
-      time: "8:00 AM - 6:00 PM",
-      location: "University Sports Complex",
-      category: "Sports",
-      organizer: "Sports Committee",
-      registrationDate: "2024-11-15",
-      status: "attended",
-      price: "Free"
-    },
-    {
-      id: "4",
-      title: "AI & Machine Learning Conference",
-      date: "2024-11-25",
-      time: "10:00 AM - 4:00 PM",
-      location: "Conference Hall",
-      category: "Conference",
-      organizer: "AI Research Group",
-      registrationDate: "2024-11-10",
-      status: "attended",
-      price: "₹1000"
+  // Update user profile when user data is available
+  useEffect(() => {
+    if (user?.user) {
+      setUserProfile({
+        name: user.user.name || "",
+        email: user.user.email || "",
+      });
     }
-  ]);
+  }, [user]);
+
+  const [registeredEvents, setRegisteredEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch user registrations from API
+  useEffect(() => {
+    const fetchRegistrations = async () => {
+      if (!user?.user?._id) {
+        setError("User not logged in");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const response = await fetch(`/backend/api/register/${user.user._id}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to fetch registrations");
+        }
+
+        if (data.status === "success") {
+          // Transform API data to match component structure
+          const transformedEvents = data.data.registrations
+            .filter(reg => reg.event) // Only include registrations with valid events
+            .map(reg => ({
+              id: reg._id,
+              title: reg.event.title,
+              date: new Date(reg.event.date).toISOString().split('T')[0],
+              time: reg.event.time || "Time TBD",
+              location: reg.event.location,
+              category: reg.event.category,
+              organizer: reg.event.organizer,
+              registrationDate: new Date(reg.registrationDate).toISOString().split('T')[0],
+              status: determineEventStatus(reg.event.date, reg.event.status),
+              price: formatPrice(reg.event.price)
+            }));
+
+          setRegisteredEvents(transformedEvents);
+        }
+      } catch (err) {
+        console.error("Error fetching registrations:", err);
+        setError(err.message || "Failed to load registrations");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRegistrations();
+  }, [user]);
+
+  // Determine event status based on date and event status
+  const determineEventStatus = (eventDate, eventStatus) => {
+    const today = new Date();
+    const event = new Date(eventDate);
+    
+    if (eventStatus === 'cancelled') return 'cancelled';
+    if (event < today) return 'attended';
+    return 'registered';
+  };
+
+  // Format price
+  const formatPrice = (price) => {
+    if (!price || price === 0) return "Free";
+    return `₹${price}`;
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -114,31 +141,36 @@ export default function UserProfilePage() {
               <div className="text-center mb-6">
                 <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-2xl font-bold text-indigo-600">
-                    {userProfile.name.split(' ').map(n => n[0]).join('')}
+                    {userProfile.name 
+                      ? userProfile.name.split(' ').map(n => n[0]).join('').toUpperCase()
+                      : 'U'}
                   </span>
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">{userProfile.name}</h2>
-                <p className="text-gray-600 text-sm">{userProfile.department}</p>
-                <p className="text-gray-500 text-sm mt-1">{userProfile.studentId}</p>
+                <h2 className="text-xl font-bold text-gray-900">
+                  {userProfile.name || 'User'}
+                </h2>
+                <p className="text-gray-500 text-sm mt-1">
+                  {userProfile.email || 'user@example.com'}
+                </p>
               </div>
 
               <div className="space-y-4">
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm font-medium text-gray-700">Total Events</span>
                   <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full text-sm font-bold">
-                    {registeredEvents.length}
+                    {loading ? "..." : registeredEvents.length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm font-medium text-gray-700">Attended</span>
                   <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-bold">
-                    {registeredEvents.filter(event => event.status === "attended").length}
+                    {loading ? "..." : registeredEvents.filter(event => event.status === "attended").length}
                   </span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-sm font-medium text-gray-700">Upcoming</span>
                   <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-bold">
-                    {registeredEvents.filter(event => event.status === "registered").length}
+                    {loading ? "..." : registeredEvents.filter(event => event.status === "registered").length}
                   </span>
                 </div>
               </div>
@@ -150,7 +182,26 @@ export default function UserProfilePage() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Your Registered Events</h2>
               
-              {registeredEvents.length === 0 ? (
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-indigo-600"></div>
+                  <p className="text-gray-600 mt-4">Loading your registrations...</p>
+                </div>
+              ) : error ? (
+                <div className="text-center py-12">
+                  <svg className="w-16 h-16 text-red-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Events</h3>
+                  <p className="text-gray-600 mb-4">{error}</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              ) : registeredEvents.length === 0 ? (
                 <div className="text-center py-12">
                   <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />

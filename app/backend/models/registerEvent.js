@@ -1,55 +1,47 @@
-// models/User.js
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+import mongoose from 'mongoose';
 
-const userSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, 'Name is required'],
-    trim: true,
-    maxlength: [100, 'Name cannot exceed 100 characters']
-  },
-  email: {
-    type: String,
-    required: [true, 'Email is required'],
-    unique: true,
-    lowercase: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
-  },
-  phone: {
-    type: String,
-    required: [true, 'Phone number is required']
+const registrationSchema = new mongoose.Schema({
+  eventId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Event',
+    required: [true, 'Event ID is required']
   },
   studentId: {
     type: String,
-    required: [true, 'Student ID is required'],
-    unique: true,
+    required: [true, 'Student ID is required']
+  },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'User ID is required']
+  },
+  name: {
+    type: String,
+    required: [true, 'Name is required'],
     trim: true
+  },
+  email: {
+    type: String,
+    lowercase: true
+  },
+  phone: {
+    type: String,
   },
   department: {
     type: String,
-    required: [true, 'Department is required'],
-    enum: [
-      'Computer Science',
-      'Electrical Engineering',
-      'Mechanical Engineering',
-      'Civil Engineering',
-      'Business Administration',
-      'Other'
-    ]
   },
-
-  joinDate: {
+  registrationDate: {
     type: Date,
     default: Date.now
-  },
-  registered: {
-    type: Boolean,
-    default: false
-  },
+  }
 }, {
   timestamps: true
 });
 
+// Compound index to prevent duplicate registrations
+registrationSchema.index({ eventId: 1, studentId: 1 }, { unique: true });
+registrationSchema.index({ eventId: 1, userId: 1 }, { unique: true });
 
-module.exports = mongoose.model('User', userSchema);
+const Registration = mongoose.models.Registration || mongoose.model('Registration', registrationSchema);
+
+export default Registration;
