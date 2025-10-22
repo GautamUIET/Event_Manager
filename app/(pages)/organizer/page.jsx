@@ -2,14 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSelector } from "react-redux";
+import { logout, setLogoutError } from "../../store/authSlice";
+import { useSelector, useDispatch } from "react-redux";
 
 export default function OrganizerPage() {
   const router = useRouter();
+  const dispatch = useDispatch();
   const [activeTab, setActiveTab] = useState("create");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
   const [eventForm, setEventForm] = useState({
     title: "",
@@ -47,6 +51,42 @@ export default function OrganizerPage() {
 
   const user = useSelector((state) => state.auth.user);
 
+  // Set client-side flag to prevent hydration mismatches
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      dispatch(setLogoutError(null));
+      
+      const response = await fetch('/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.status === "success") {
+        dispatch(logout());
+        window.location.href = '/';
+      } else {
+        console.error('Logout failed:', data.message);
+        dispatch(setLogoutError(data.message));
+        alert('Logout failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      dispatch(setLogoutError(error.message));
+      alert('An error occurred during logout. Please try again.');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   // Fetch events when component mounts or when activeTab changes to "manage"
   useEffect(() => {
     if (activeTab === "manage" && user?.user?._id) {
@@ -55,12 +95,14 @@ export default function OrganizerPage() {
   }, [activeTab, user]);
 
   const getCurrentUser = () => {
+    if (!isClient) {
+      return { id: "", name: "" }; // Return empty values during SSR
+    }
     return {
       id: user?.user?._id || "user123",
-      name: user?.user?.name || "John Doe"
+      name: user?.user?.name || "Organizer"
     };
   };
-  console.log("Current User:", getCurrentUser().id, getCurrentUser().name);
 
   // Fetch all events for the current organizer
   const fetchOrganizerEvents = async () => {
@@ -81,7 +123,6 @@ export default function OrganizerPage() {
         },
       });
 
-      // Check if response is JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
@@ -94,7 +135,6 @@ export default function OrganizerPage() {
         throw new Error(result.error || 'Failed to fetch events');
       }
 
-      // Set the events from API response
       setOrganizerEvents(result.data?.events || []);
 
     } catch (error) {
@@ -154,7 +194,6 @@ export default function OrganizerPage() {
         body: JSON.stringify(eventData),
       });
 
-      // Check if response is JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
@@ -167,10 +206,8 @@ export default function OrganizerPage() {
         throw new Error(result.error || 'Failed to create event');
       }
 
-      // Refresh the events list after creating a new event
       await fetchOrganizerEvents();
 
-      // Reset form
       setEventForm({
         title: "",
         description: "",
@@ -199,7 +236,27 @@ export default function OrganizerPage() {
     }
   };
 
-
+  // Don't render user-specific content during SSR
+  if (!isClient) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-white to-indigo-50/30 text-gray-900">
+        <div className="bg-white shadow-sm border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Organizer Dashboard</h1>
+              <p className="text-gray-600 mt-2">Create and manage your events</p>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-indigo-50/30 text-gray-900">
@@ -209,6 +266,33 @@ export default function OrganizerPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Organizer Dashboard</h1>
             <p className="text-gray-600 mt-2">Create and manage your events</p>
+          </div>
+          
+          {/* Logout Button */}
+          <div className="flex items-center space-x-4">
+            <span className="text-gray-600">Welcome, {getCurrentUser().name}</span>
+            <button
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+            >
+              {isLoggingOut ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Logging out...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Logout
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -252,7 +336,7 @@ export default function OrganizerPage() {
             <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Create New Event</h2>
               <form onSubmit={handleSubmit} className="space-y-8">
-                {/* Form fields */}
+                {/* Form fields - same as before */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Event Title *</label>
